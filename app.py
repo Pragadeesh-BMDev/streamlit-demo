@@ -1,19 +1,88 @@
-import glob
-import os
-import re
-
-import pandas as pd
 import streamlit as st
-import gettext as _
-from PIL import Image
-
 import base64
 
+import fitz  # PyMuPDF
+import os
+import time
+
+class coordinates:
+    page_number : int
+    points: tuple[int, int, int, int]
+
+    def __init__(self, points, page_number):
+        self.points = points
+        self.page_number = page_number
+
+def highlight_area_on_pdf(pdf_path, output_path, coordinates : list[coordinates], highlight_color=(1, 1, 0)):
+    """
+    Highlights specific areas on a PDF page (e.g., over an image).
+
+    :param pdf_path: Path to the input PDF file
+    :param output_path: Path to save the modified PDF
+    :param page_number: The page number (0-indexed) where the highlight will be applied
+    :param coordinates: A list of tuples [(x0, y0, x1, y1)] defining rectangle coordinates
+    :param highlight_color: Tuple with RGB values for the highlight color (0 to 1 scale)
+    """
+    
+    # Open the PDF
+    pdf_document = fitz.open(pdf_path)
+
+    # Ensure coordinates are provided
+    if not coordinates:
+        print("No coordinates provided for highlighting. Exiting.")
+        pdf_document.close()
+        return
+
+    # Iterate over all rectangles to highlight
+    for coordinate in coordinates:
+        try:
+            # Check if the page exists
+            if coordinate.page_number < 0 or coordinate.page_number >= len(pdf_document):
+                pdf_document.close()
+                raise ValueError(f"Invalid page number: {coordinate.page_number}. The PDF has {len(pdf_document)} pages.")
+
+            # Get the specified page
+            page = pdf_document[coordinate.page_number]
+
+            highlight_rect = fitz.Rect(coordinate.points)
+            # Add a rectangle annotation with the highlight color
+            highlight = page.add_rect_annot(highlight_rect)
+            highlight.set_colors(stroke=highlight_color, fill=highlight_color)  # Fill and stroke color
+            highlight.set_opacity(0.4)  # Make the highlight semi-transparent
+            highlight.update()  # Apply changes
+        except Exception as e:
+            print(f"Error processing rectangle {coordinate.points}: {e}")
+
+    # Save the modified PDF
+    pdf_document.save(output_path, garbage=4, deflate=True)
+    pdf_document.close()
+    print(f"Highlight added and saved to: {output_path}")
+
+# Example Usage
+pdf_file = "77911_UK_10627575_12-2022.pdf"  # Input PDF file
+output_file = "output.pdf"  # Output PDF file
+
+coordinates_list : list[coordinates] = []
+coordinates_list.append(coordinates((100, 100, 200, 200), 0))
+coordinates_list.append(coordinates((100, 100, 200, 200), 20))
+
+if not os.path.exists(pdf_file):
+    print(f"File not found: {pdf_file}")
+else:
+    print("File found! Proceeding with highlight.")
+    start_time = time.time()  
+    highlight_area_on_pdf(pdf_file, output_file, coordinates_list)
+    end_time = time.time()
+    total_time = end_time - start_time
+    print(f"Total Time: {total_time:.2f} seconds")
+
+
+# ------- streamlit code ------- 
 st.set_page_config(layout="wide")
 
 
 # Logo and Navigation
-col1, col2, col3 = st.columns((1, 4, 1))
+col1, col2 = st.columns([1, 1])
 # with col2:
 #     st.markdown(("# 30 Days of Streamlit"))
 
@@ -32,69 +101,3 @@ with open(pdf_path,"rb") as f:
 
 pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="800" height="800" type="application/pdf"></iframe>'
 st.markdown(pdf_display, unsafe_allow_html=True)
-
-# Display the PDF in an iframe
-st.markdown(
-    f"""
-    <iframe src="data:application/pdf;base64,{base64_pdf}" 
-    width="100%" height="1000rem" style="border: none;"></iframe>
-    """,
-    unsafe_allow_html=True,
-)
-
-#---------------------------------------------------------------------------------------------------------                -------
-
-# import streamlit as st
-# import base64
-
-# # Sample JSON data for the right pane
-# sample_json = {
-#     "Title": "Sample PDF",
-#     "Author": "John Doe",
-#     "Summary": "This is a brief summary of the document.",
-#     "Keywords": ["Streamlit", "PDF", "UI", "Example"]
-# }
-
-# # Creating two columns
-# col1, col2 = st.columns([1, 1])
-
-# # Left column: PDF Viewer
-# # with col1:
-# # Path to the PDF file
-# pdf_path = "highlighted_example1.pdf"
-
-# # Read the PDF file as binary
-# with open(pdf_path, "rb") as pdf_file:
-#     pdf_data = pdf_file.read()
-
-# # Encode the binary PDF data to base64 for rendering
-# base64_pdf = base64.b64encode(pdf_data).decode("utf-8")
-
-# # Display the PDF in an iframe
-# st.markdown(
-#     f"""
-#     <iframe src="data:application/pdf;base64,{base64_pdf}" 
-#     width="100%" height="100%" style="border: none;"></iframe>
-#     """,
-#     unsafe_allow_html=True,
-# )
-#     # st.header("PDF Viewer")
-#     # uploaded_file = st.file_uploader("Upload a PDF", type=["pdf"])
-    
-#     # if uploaded_file:
-#     #     # Using pdfplumber to extract and display PDF content
-#     #     with pdfplumber.open('highlighted_example.pdf') as pdf:
-#     #         st.subheader("Pages Preview")
-#     #         for page_number, page in enumerate(pdf.pages):
-#     #             st.write(f"Page {page_number + 1}")
-#     #             st.text(page.extract_text())
-
-#     #         # Optional: Provide the entire document for download
-#     #         full_text = "\n".join([page.extract_text() for page in pdf.pages])
-#     #         st.download_button("Download Extracted Text", full_text)
-
-# # Right column: JSON Information
-# # with col2:
-# #     st.header("Summary & Info")
-# #     st.subheader("JSON Data")
-# #     st.json(sample_json)
